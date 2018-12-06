@@ -63,7 +63,7 @@ class TranslatableTest extends TestCase
     /** @test */
     public function it_will_return_an_empty_string_when_getting_an_unknown_locale_and_fallback_is_empty()
     {
-        $this->app['config']->set('laravel-translatable.fallback_locale', '');
+        $this->app['config']->set('translatable.fallback_locale', '');
 
         $this->testModel->setTranslation('name', 'en', 'testValue_en');
         $this->testModel->save();
@@ -127,6 +127,28 @@ class TranslatableTest extends TestCase
     }
 
     /** @test */
+    public function it_can_get_all_translations_for_all_translatable_attributes_in_one_go()
+    {
+        $this->testModel->setTranslation('name', 'en', 'testValue_en');
+        $this->testModel->setTranslation('name', 'fr', 'testValue_fr');
+
+        $this->testModel->setTranslation('other_field', 'en', 'testValue_en');
+        $this->testModel->setTranslation('other_field', 'fr', 'testValue_fr');
+        $this->testModel->save();
+
+        $this->assertSame([
+            'name' => [
+                'en' => 'testValue_en',
+                'fr' => 'testValue_fr',
+            ],
+            'other_field' => [
+                'en' => 'testValue_en',
+                'fr' => 'testValue_fr',
+            ],
+        ], $this->testModel->getTranslations());
+    }
+
+    /** @test */
     public function it_can_get_the_locales_which_have_a_translation()
     {
         $this->testModel->setTranslation('name', 'en', 'testValue_en');
@@ -153,6 +175,37 @@ class TranslatableTest extends TestCase
         $this->assertSame([
             'fr' => 'testValue_fr',
         ], $this->testModel->getTranslations('name'));
+    }
+
+    /** @test */
+    public function it_can_forget_all_translations()
+    {
+        $this->testModel->setTranslation('name', 'en', 'testValue_en');
+        $this->testModel->setTranslation('name', 'fr', 'testValue_fr');
+
+        $this->testModel->setTranslation('other_field', 'en', 'testValue_en');
+        $this->testModel->setTranslation('other_field', 'fr', 'testValue_fr');
+        $this->testModel->save();
+
+        $this->assertSame([
+            'en' => 'testValue_en',
+            'fr' => 'testValue_fr',
+        ], $this->testModel->getTranslations('name'));
+
+        $this->assertSame([
+            'en' => 'testValue_en',
+            'fr' => 'testValue_fr',
+        ], $this->testModel->getTranslations('other_field'));
+
+        $this->testModel->forgetAllTranslations('en');
+
+        $this->assertSame([
+            'fr' => 'testValue_fr',
+        ], $this->testModel->getTranslations('name'));
+
+        $this->assertSame([
+            'fr' => 'testValue_fr',
+        ], $this->testModel->getTranslations('other_field'));
     }
 
     /** @test */
@@ -195,15 +248,37 @@ class TranslatableTest extends TestCase
     public function it_can_use_mutators_on_translated_attributes()
     {
         $testModel = new class() extends TestModel {
-            public function setNameAttribute($value) : string
+            public function setNameAttribute($value)
             {
-                return "I just mutated {$value}";
+                $this->attributes['name'] = "I just mutated {$value}";
             }
         };
 
         $testModel->setTranslation('name', 'en', 'testValue_en');
 
         $this->assertEquals($testModel->name, 'I just mutated testValue_en');
+    }
+
+    /** @test */
+    public function it_can_set_translations_for_default_language()
+    {
+        $model = TestModel::create([
+            'name' => [
+                'en' => 'testValue_en',
+                'fr' => 'testValue_fr',
+            ],
+        ]);
+
+        app()->setLocale('en');
+
+        $model->name = 'updated_en';
+        $this->assertEquals('updated_en', $model->name);
+        $this->assertEquals('testValue_fr', $model->getTranslation('name', 'fr'));
+
+        app()->setLocale('fr');
+        $model->name = 'updated_fr';
+        $this->assertEquals('updated_fr', $model->name);
+        $this->assertEquals('updated_en', $model->getTranslation('name', 'en'));
     }
 
     /** @test */
@@ -223,5 +298,96 @@ class TranslatableTest extends TestCase
         $this->assertTrue($this->testModel->isTranslatableAttribute('name'));
 
         $this->assertFalse($this->testModel->isTranslatableAttribute('other'));
+    }
+
+    /** @test */
+    public function it_can_correctly_set_a_field_when_a_mutator_is_defined()
+    {
+        $testModel = (new class() extends TestModel {
+            public function setNameAttribute($value)
+            {
+                $this->attributes['name'] = "I just mutated {$value}";
+            }
+        });
+
+        $testModel->name = 'hello';
+
+        $expected = ['en' => 'I just mutated hello'];
+        $this->assertEquals($expected, $testModel->getTranslations('name'));
+    }
+
+    /** @test */
+    public function it_can_set_multiple_translations_when_a_mutator_is_defined()
+    {
+        $testModel = (new class() extends TestModel {
+            public function setNameAttribute($value)
+            {
+                $this->attributes['name'] = "I just mutated {$value}";
+            }
+        });
+
+        $translations = [
+            'nl' => 'hallo',
+            'en' => 'hello',
+            'kh' => 'សួរស្តី',
+        ];
+
+        $testModel->setTranslations('name', $translations);
+
+        $testModel->save();
+
+        $expected = [
+            'nl' => 'I just mutated hallo',
+            'en' => 'I just mutated hello',
+            'kh' => 'I just mutated សួរស្តី',
+        ];
+
+        $this->assertEquals($expected, $testModel->getTranslations('name'));
+    }
+
+    /** @test */
+    public function it_can_translate_a_field_based_on_the_translations_of_another_one()
+    {
+        $testModel = (new class() extends TestModel {
+            public function setOtherFieldAttribute($value, $locale = 'en')
+            {
+                $this->attributes['other_field'] = $value.' '.$this->getTranslation('name', $locale);
+            }
+        });
+
+        $testModel->setTranslations('name', [
+            'nl' => 'wereld',
+            'en' => 'world',
+        ]);
+
+        $testModel->setTranslations('other_field', [
+            'nl' => 'hallo',
+            'en' => 'hello',
+        ]);
+
+        $testModel->save();
+
+        $expected = [
+            'nl' => 'hallo wereld',
+            'en' => 'hello world',
+        ];
+
+        $this->assertEquals($expected, $testModel->getTranslations('other_field'));
+    }
+
+    /** @test */
+    public function it_handle_null_value_from_database()
+    {
+        $testModel = (new class() extends TestModel {
+            public function setAttributesExternally(array $attributes)
+            {
+                $this->attributes = $attributes;
+            }
+        });
+
+        $testModel->setAttributesExternally(['name' => json_encode(null), 'other_field' => null]);
+
+        $this->assertEquals('', $testModel->name);
+        $this->assertEquals('', $testModel->other_field);
     }
 }

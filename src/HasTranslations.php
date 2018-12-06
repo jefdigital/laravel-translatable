@@ -42,7 +42,26 @@ trait HasTranslations
             return parent::getAttributeValue($key);
         }
 
-        return $this->getTranslation($key, is_null($this->modelLocale) ? config('app.locale') : $this->modelLocale);
+        return $this->getTranslation($key, $this->getLocale());
+    }
+
+    /**
+     * Set a given attribute on the model.
+     *
+     * @param string $key
+     * @param mixed  $value
+     *
+     * @return $this
+     */
+    public function setAttribute($key, $value)
+    {
+        // pass arrays and untranslatable attributes to the parent method
+        if (!$this->isTranslatableAttribute($key) || is_array($value)) {
+            return parent::setAttribute($key, $value);
+        }
+        // if the attribute is translatable and not already translated (=array),
+        // set a translation for the current app locale
+        return $this->setTranslation($key, $this->getLocale(), $value);
     }
 
     /**
@@ -88,21 +107,22 @@ trait HasTranslations
         return $this->getTranslation($key, $locale, false);
     }
 
-    public function getTranslations($key) : array
+    public function getTranslations($key = null) : array
     {
-        $this->guardAgainstUntranslatableAttribute($key);
+        if ($key !== null) {
+            $this->guardAgainstUntranslatableAttribute($key);
 
-        return json_decode($this->getAttributes()[$key] ?? '' ?: '{}', true);
+            return json_decode($this->getAttributes()[$key] ?? '' ?: '{}', true) ?: [];
+        }
+
+        return array_reduce($this->getTranslatableAttributes(), function ($result, $item) {
+            $result[$item] = $this->getTranslations($item);
+
+            return $result;
+        });
     }
 
-    /**
-     * @param string $key
-     * @param string $locale
-     * @param $value
-     *
-     * @return $this
-     */
-    public function setTranslation(string $key, string $locale, $value)
+    public function setTranslation(string $key, string $locale, $value): self
     {
         $this->guardAgainstUntranslatableAttribute($key);
 
@@ -112,7 +132,8 @@ trait HasTranslations
 
         if ($this->hasSetMutator($key)) {
             $method = 'set'.Str::studly($key).'Attribute';
-            $value = $this->{$method}($value);
+            $this->{$method}($value, $locale);
+            $value = $this->attributes[$key];
         }
 
         $translations[$locale] = $value;
@@ -158,6 +179,13 @@ trait HasTranslations
         return $this;
     }
 
+    public function forgetAllTranslations(string $locale)
+    {
+        collect($this->getTranslatableAttributes())->each(function (string $attribute) use ($locale) {
+            $this->forgetTranslation($attribute, $locale);
+        });
+    }
+
     public function getTranslatedLocales(string $key) : array
     {
         return array_keys($this->getTranslations($key));
@@ -185,11 +213,16 @@ trait HasTranslations
             return $locale;
         }
 
-        if (!is_null($fallbackLocale = config('laravel-translatable.fallback_locale'))) {
+        if (!is_null($fallbackLocale = config('translatable.fallback_locale'))) {
             return $fallbackLocale;
         }
 
         return $locale;
+    }
+
+    protected function getLocale() : string
+    {
+        return $this->modelLocale ?: config('app.locale');
     }
 
     public function getTranslatableAttributes() : array

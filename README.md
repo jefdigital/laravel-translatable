@@ -3,7 +3,6 @@
 [![Latest Version on Packagist](https://img.shields.io/packagist/v/spatie/laravel-translatable.svg?style=flat-square)](https://packagist.org/packages/spatie/laravel-translatable)
 [![Software License](https://img.shields.io/badge/license-MIT-brightgreen.svg?style=flat-square)](LICENSE.md)
 [![Build Status](https://img.shields.io/travis/spatie/laravel-translatable/master.svg?style=flat-square)](https://travis-ci.org/spatie/laravel-translatable)
-[![SensioLabsInsight](https://img.shields.io/sensiolabs/i/c4778005-2b5f-4cd7-b4b2-9b12d326dded.svg?style=flat-square)](https://insight.sensiolabs.com/projects/c4778005-2b5f-4cd7-b4b2-9b12d326dded)
 [![Quality Score](https://img.shields.io/scrutinizer/g/spatie/laravel-translatable.svg?style=flat-square)](https://scrutinizer-ci.com/g/spatie/laravel-translatable)
 [![StyleCI](https://styleci.io/repos/55690447/shield?branch=master)](https://styleci.io/repos/55690447)
 [![Total Downloads](https://img.shields.io/packagist/dt/spatie/laravel-translatable.svg?style=flat-square)](https://packagist.org/packages/spatie/laravel-translatable)
@@ -27,14 +26,6 @@ app()->setLocale('nl');
 $newsItem->name; // Returns 'Naam in het Nederlands'
 ```
 
-## Postcardware
-
-You're free to use this package (it's [MIT-licensed](LICENSE.md)), but if it makes it to your production environment you are required to send us a postcard from your hometown, mentioning which of our package(s) you are using.
-
-Our address is: Spatie, Samberstraat 69D, 2060 Antwerp, Belgium.
-
-The best postcards will get published on the open source page on our website.
-
 ## Installation
 
 You can install the package via composer:
@@ -43,16 +34,7 @@ You can install the package via composer:
 composer require spatie/laravel-translatable
 ```
 
-Next up, the service provider must be registered:
-
-```php
-// config/app.php
-'providers' => [
-    ...
-    Spatie\Translatable\TranslatableServiceProvider::class,
-
-];
-```
+The package will automatically register itself.
 
 If you want to change add fallback_locale, you must publish the config file:
 ```
@@ -71,9 +53,9 @@ return [
 
 The required steps to make a model translatable are:
 
-- First you need to add the `Spatie\Translatable\HasTranslations`-trait.
-- Next you should create a public property `$translatable` which holds an array with all the names of attributes you wish to make translatable.
-- Finally you should make sure that all translatable attributes are set to the `text`-datatype in your database. If your database supports `json`-columns, use that.
+- First, you need to add the `Spatie\Translatable\HasTranslations`-trait.
+- Next, you should create a public property `$translatable` which holds an array with all the names of attributes you wish to make translatable.
+- Finally, you should make sure that all translatable attributes are set to the `text`-datatype in your database. If your database supports `json`-columns, use that.
 
 Here's an example of a prepared model:
 
@@ -108,7 +90,23 @@ public function getTranslation(string $attributeName, string $locale) : string
 
 This function has an alias named `translate`.
 
+#### Getting all translations
+
+You can get all translations by calling `getTranslations()` without an argument:
+
+```php
+$newsItem->getTranslations();
+```
+
 #### Setting a translation
+The easiest way to set a translation for the current locale is to just set the property for a translatable attribute.
+For example (given that `name` is a translatable attribute):
+
+```php
+$newsItem->name = 'New translation';
+```
+
+To set a translation for a specific locale you can use this method:
 
 ``` php
 public function setTranslation(string $attributeName, string $locale, string $value)
@@ -122,16 +120,26 @@ $newsItem->setTranslation('name', 'en', 'Updated name in English');
 $newsItem->save();
 ```
 
+#### Validation
+
+- if you want to validate an attribute for uniqueness before saving/updating the db, you might want to have a look at [laravel-unique-translation](https://github.com/codezero-be/laravel-unique-translation) which is made specifically for *laravel-translatable*.
+
 #### Forgetting a translation
 
+You can forget a translation for a specific field:
 ``` php
 public function forgetTranslation(string $attributeName, string $locale)
+```
+
+You can forget all translations for a specific locale:
+``` php
+public function forgetAllTranslations(string $locale)
 ```
 
 #### Getting all translations in one go
 
 ``` php
-public function getTranslations(string $attributeName) : array
+public function getTranslations(string $attributeName): array
 ```
 
 #### Setting translations in one go
@@ -189,13 +197,34 @@ If you're using MySQL 5.7 or above, it's recommended that you use the json data 
 This will allow you to query these columns like this:
 
 ```php
-NewsItem::whereRaw('name->"$.en" = \'Name in English\'')->get();
+NewsItem::where('name->en', 'Name in English')->get();
 ```
 
-In laravel 5.2.23 and above you can use the fluent syntax:
+### Using translations in json responses
 
-```php
-NewsItem::where('name->en', 'Name in English')->get();
+The easiest way to add translations to json reponse is to override the `toArray` method on your model.
+
+Here's a quick example:
+
+``` php
+// in your model
+
+    /**
+     * Convert the model instance to an array.
+     *
+     * @return array
+     */
+    public function toArray()
+    {
+        $attributes = parent::toArray();
+        
+        foreach ($this->getTranslatableAttributes() as $name) {
+            $attributes[$name] = $this->getTranslation($name, app()->getLocale());
+        }
+        
+        return $attributes;
+    }
+}
 ```
 
 ## Changelog
@@ -204,7 +233,7 @@ Please see [CHANGELOG](CHANGELOG.md) for more information what has changed recen
 
 ## Testing
 
-``` bash
+```bash
 $ composer test
 ```
 
@@ -216,16 +245,28 @@ Please see [CONTRIBUTING](CONTRIBUTING.md) for details.
 
 If you discover any security related issues, please email freek@spatie.be instead of using the issue tracker.
 
+## Postcardware
+
+You're free to use this package, but if it makes it to your production environment we highly appreciate you sending us a postcard from your hometown, mentioning which of our package(s) you are using.
+
+Our address is: Spatie, Samberstraat 69D, 2060 Antwerp, Belgium.
+
+We publish all received postcards [on our company website](https://spatie.be/en/opensource/postcards).
+
 ## Credits
 
 - [Freek Van der Herten](https://github.com/freekmurze)
 - [Sebastian De Deyne](https://github.com/sebastiandedeyne)
 - [All Contributors](../../contributors)
 
-We got the idea to store translations as json in a column from [Mohamed Said](https://github.com/themsaid). Parts of the readme of [his multiligual package](https://github.com/themsaid/laravel-multilingual) were used in this readme.
+We got the idea to store translations as json in a column from [Mohamed Said](https://github.com/themsaid). Parts of the readme of [his multilingual package](https://github.com/themsaid/laravel-multilingual) were used in this readme.
 
-## About Spatie
+## Support us
+
 Spatie is a webdesign agency based in Antwerp, Belgium. You'll find an overview of all our open source projects [on our website](https://spatie.be/opensource).
+
+Does your business depend on our contributions? Reach out and support us on [Patreon](https://www.patreon.com/spatie). 
+All pledges will be dedicated to allocating workforce on maintenance and new awesome stuff.
 
 ## License
 
