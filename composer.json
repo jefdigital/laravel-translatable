@@ -1,6 +1,6 @@
 {
-    "name": "jefdigital/laravel-translatable",
-    "description": "A trait to make an Eloquent model hold translations - forked from spatie/laravel-translatable",
+    "name": "spatie/laravel-translatable",
+    "description": "A trait to make an Eloquent model hold translations",
     "keywords": [
         "spatie",
         "laravel-translatable",
